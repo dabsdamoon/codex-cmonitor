@@ -8,6 +8,7 @@ from codex_cmonitor.parser import (
     ThreadRecord,
     fetch_latest_thread,
     fetch_latest_token_count,
+    fetch_recent_token_counts,
 )
 
 
@@ -27,20 +28,32 @@ class SessionSummary:
     updated_at: int
     thread_tokens_used: int
     token_count: TokenCountRecord | None
+    recent_token_counts: list[TokenCountRecord]
 
 
-def get_active_session(codex_home: str | Path | None = None) -> SessionSummary | None:
+def get_active_session(
+    codex_home: str | Path | None = None,
+    *,
+    trend_minutes: int = 15,
+    now_ts: int | None = None,
+) -> SessionSummary | None:
     thread = fetch_latest_thread(codex_home)
     if thread is None:
         return None
 
     token_count = fetch_latest_token_count(thread.rollout_path)
-    return _to_session_summary(thread, token_count)
+    recent_token_counts = fetch_recent_token_counts(
+        thread.rollout_path,
+        minutes=trend_minutes,
+        now_ts=now_ts,
+    )
+    return _to_session_summary(thread, token_count, recent_token_counts)
 
 
 def _to_session_summary(
     thread: ThreadRecord,
     token_count: TokenCountRecord | None,
+    recent_token_counts: list[TokenCountRecord],
 ) -> SessionSummary:
     return SessionSummary(
         session_id=thread.session_id,
@@ -57,4 +70,5 @@ def _to_session_summary(
         updated_at=thread.updated_at,
         thread_tokens_used=thread.tokens_used,
         token_count=token_count,
+        recent_token_counts=recent_token_counts,
     )

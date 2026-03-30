@@ -36,7 +36,14 @@ Then run:
 ```bash
 codex-cmonitor
 codex-cmonitor --json
+codex-cmonitor --watch
+codex-cmonitor --watch --interval 1 --no-color
+codex-cmonitor --trend-minutes 30
 ```
+
+In watch mode, the live renderer automatically switches across responsive layouts for wide, compact, and very narrow terminal widths. This is intended for tmux side panes and quarter-width views. The narrow layouts prioritize trend, limit meters, and turn-mix visuals over low-value metadata.
+
+Recent token trend is configurable with `--trend-minutes`. The default window is `15` minutes.
 
 ## Development
 
@@ -45,6 +52,8 @@ Run directly from the source tree:
 ```bash
 PYTHONPATH=src python3 -m codex_cmonitor
 PYTHONPATH=src python3 -m codex_cmonitor --json
+PYTHONPATH=src python3 -m codex_cmonitor --watch --interval 1 --no-color
+PYTHONPATH=src python3 -m codex_cmonitor --trend-minutes 30
 python3 -m pytest -q
 ```
 

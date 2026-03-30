@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -28,6 +29,7 @@ class ThreadRecord:
 @dataclass
 class TokenCountRecord:
     timestamp: str
+    timestamp_unix: int | None
     total_tokens: int | None
     input_tokens: int | None
     output_tokens: int | None
@@ -130,6 +132,39 @@ def fetch_latest_token_count(rollout_path: str | Path) -> TokenCountRecord | Non
     return latest
 
 
+def fetch_recent_token_counts(
+    rollout_path: str | Path,
+    *,
+    minutes: int,
+    now_ts: int | None = None,
+) -> list[TokenCountRecord]:
+    path = Path(rollout_path).expanduser()
+    if not path.exists():
+        return []
+
+    if now_ts is None:
+        now_ts = int(datetime.now(tz=timezone.utc).timestamp())
+    cutoff_ts = now_ts - max(0, minutes * 60)
+
+    records: list[TokenCountRecord] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            raw_line = raw_line.strip()
+            if not raw_line:
+                continue
+            try:
+                event = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+
+            record = _parse_token_count_event(event)
+            if record is None or record.timestamp_unix is None:
+                continue
+            if record.timestamp_unix >= cutoff_ts:
+                records.append(record)
+    return records
+
+
 def _parse_token_count_event(event: dict[str, Any]) -> TokenCountRecord | None:
     if event.get("type") != "event_msg":
         return None
@@ -148,6 +183,7 @@ def _parse_token_count_event(event: dict[str, Any]) -> TokenCountRecord | None:
 
     return TokenCountRecord(
         timestamp=str(event.get("timestamp", "")),
+        timestamp_unix=_parse_timestamp_to_unix(event.get("timestamp")),
         total_tokens=_get_int(total_usage, "total_tokens"),
         input_tokens=_get_int(last_usage, "input_tokens"),
         output_tokens=_get_int(last_usage, "output_tokens"),
@@ -160,6 +196,19 @@ def _parse_token_count_event(event: dict[str, Any]) -> TokenCountRecord | None:
         secondary_resets_at=_get_int(secondary, "resets_at"),
         plan_type=rate_limits.get("plan_type") if isinstance(rate_limits, dict) else None,
     )
+
+
+def _parse_timestamp_to_unix(value: Any) -> int | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        normalized = value.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp())
 
 
 def _get_int(data: Any, key: str) -> int | None:

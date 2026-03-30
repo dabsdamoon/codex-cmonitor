@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
+import time
 
 from codex_cmonitor.session_store import get_active_session
 
@@ -9,6 +10,8 @@ from codex_cmonitor.session_store import get_active_session
 @dataclass
 class MonitorSnapshot:
     status: str
+    captured_at: int
+    trend_minutes: int
     session_id: str | None
     rollout_path: str | None
     title: str | None
@@ -33,16 +36,31 @@ class MonitorSnapshot:
     secondary_window_minutes: int | None
     secondary_resets_at: int | None
     plan_type: str | None
+    trend_points: list[int]
+    trend_delta_tokens: int | None
+    trend_start_timestamp: int | None
+    trend_end_timestamp: int | None
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
 
 
-def build_snapshot(codex_home: str | Path | None = None) -> MonitorSnapshot:
-    session = get_active_session(codex_home)
+def build_snapshot(
+    codex_home: str | Path | None = None,
+    *,
+    trend_minutes: int = 15,
+) -> MonitorSnapshot:
+    captured_at = int(time.time())
+    session = get_active_session(
+        codex_home,
+        trend_minutes=trend_minutes,
+        now_ts=captured_at,
+    )
     if session is None:
         return MonitorSnapshot(
             status="no_session",
+            captured_at=captured_at,
+            trend_minutes=trend_minutes,
             session_id=None,
             rollout_path=None,
             title=None,
@@ -67,11 +85,27 @@ def build_snapshot(codex_home: str | Path | None = None) -> MonitorSnapshot:
             secondary_window_minutes=None,
             secondary_resets_at=None,
             plan_type=None,
+            trend_points=[],
+            trend_delta_tokens=None,
+            trend_start_timestamp=None,
+            trend_end_timestamp=None,
         )
 
     token_count = session.token_count
+    trend_points = [
+        record.total_tokens
+        for record in session.recent_token_counts
+        if record.total_tokens is not None
+    ]
+    trend_start = session.recent_token_counts[0].timestamp_unix if session.recent_token_counts else None
+    trend_end = session.recent_token_counts[-1].timestamp_unix if session.recent_token_counts else None
+    trend_delta = None
+    if len(trend_points) >= 2:
+        trend_delta = trend_points[-1] - trend_points[0]
     return MonitorSnapshot(
         status="ok",
+        captured_at=captured_at,
+        trend_minutes=trend_minutes,
         session_id=session.session_id,
         rollout_path=str(session.rollout_path),
         title=session.title,
@@ -96,4 +130,8 @@ def build_snapshot(codex_home: str | Path | None = None) -> MonitorSnapshot:
         secondary_window_minutes=token_count.secondary_window_minutes if token_count else None,
         secondary_resets_at=token_count.secondary_resets_at if token_count else None,
         plan_type=token_count.plan_type if token_count else None,
+        trend_points=trend_points,
+        trend_delta_tokens=trend_delta,
+        trend_start_timestamp=trend_start,
+        trend_end_timestamp=trend_end,
     )
