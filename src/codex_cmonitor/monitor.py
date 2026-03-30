@@ -27,9 +27,9 @@ class MonitorSnapshot:
     thread_tokens_used: int | None
     last_event_timestamp: str | None
     last_total_tokens: int | None
-    last_input_tokens: int | None
-    last_output_tokens: int | None
-    last_reasoning_tokens: int | None
+    recent_input_tokens: int | None
+    recent_output_tokens: int | None
+    recent_reasoning_tokens: int | None
     primary_used_percent: float | None
     primary_window_minutes: int | None
     primary_resets_at: int | None
@@ -77,9 +77,9 @@ def build_snapshot(
             thread_tokens_used=None,
             last_event_timestamp=None,
             last_total_tokens=None,
-            last_input_tokens=None,
-            last_output_tokens=None,
-            last_reasoning_tokens=None,
+            recent_input_tokens=None,
+            recent_output_tokens=None,
+            recent_reasoning_tokens=None,
             primary_used_percent=None,
             primary_window_minutes=None,
             primary_resets_at=None,
@@ -104,6 +104,9 @@ def build_snapshot(
     trend_delta = None
     if len(trend_points) >= 2:
         trend_delta = trend_points[-1] - trend_points[0]
+    recent_input_tokens = sum(record.input_tokens or 0 for record in session.recent_token_counts)
+    recent_output_tokens = sum(record.output_tokens or 0 for record in session.recent_token_counts)
+    recent_reasoning_tokens = sum(record.reasoning_tokens or 0 for record in session.recent_token_counts)
     return MonitorSnapshot(
         status="ok",
         captured_at=captured_at,
@@ -123,9 +126,9 @@ def build_snapshot(
         thread_tokens_used=session.total_thread_tokens_used,
         last_event_timestamp=token_count.timestamp if token_count else None,
         last_total_tokens=session.latest_total_tokens,
-        last_input_tokens=token_count.input_tokens if token_count else None,
-        last_output_tokens=token_count.output_tokens if token_count else None,
-        last_reasoning_tokens=token_count.reasoning_tokens if token_count else None,
+        recent_input_tokens=recent_input_tokens,
+        recent_output_tokens=recent_output_tokens,
+        recent_reasoning_tokens=recent_reasoning_tokens,
         primary_used_percent=token_count.primary_used_percent if token_count else None,
         primary_window_minutes=token_count.primary_window_minutes if token_count else None,
         primary_resets_at=token_count.primary_resets_at if token_count else None,

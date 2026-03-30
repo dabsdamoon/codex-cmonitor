@@ -92,9 +92,9 @@ def render_snapshot(
                     ("Account total", _format_number(snapshot.thread_tokens_used)),
                     ("Latest aggregate", _format_number(snapshot.last_total_tokens)),
                     ("Trend", _format_trend_summary(snapshot)),
-                    ("Last input", _format_number(snapshot.last_input_tokens)),
-                    ("Last output", _format_number(snapshot.last_output_tokens)),
-                    ("Last reasoning", _format_number(snapshot.last_reasoning_tokens)),
+                    (f"Input ({snapshot.trend_minutes}m)", _format_number(snapshot.recent_input_tokens)),
+                    (f"Output ({snapshot.trend_minutes}m)", _format_number(snapshot.recent_output_tokens)),
+                    (f"Reasoning ({snapshot.trend_minutes}m)", _format_number(snapshot.recent_reasoning_tokens)),
                     ("Last event", snapshot.last_event_timestamp or "-"),
                 ],
                 palette,
@@ -153,9 +153,9 @@ def render_snapshot_live(snapshot: MonitorSnapshot, *, width: int | None = None)
             ("Account total", _format_number(snapshot.thread_tokens_used)),
             ("Latest aggregate", _format_number(snapshot.last_total_tokens)),
             ("Trend", _format_trend_summary(snapshot)),
-            ("Last input", _format_number(snapshot.last_input_tokens)),
-            ("Last output", _format_number(snapshot.last_output_tokens)),
-            ("Last reasoning", _format_number(snapshot.last_reasoning_tokens)),
+            (f"Input ({snapshot.trend_minutes}m)", _format_number(snapshot.recent_input_tokens)),
+            (f"Output ({snapshot.trend_minutes}m)", _format_number(snapshot.recent_output_tokens)),
+            (f"Reasoning ({snapshot.trend_minutes}m)", _format_number(snapshot.recent_reasoning_tokens)),
             ("Last event", snapshot.last_event_timestamp or "-"),
         ]
     )
@@ -329,7 +329,7 @@ def _compact_live_panel(snapshot: MonitorSnapshot, *, width: int | None = None) 
             suffix=_compact_limit(snapshot.secondary_used_percent, snapshot.secondary_window_minutes),
             width=graph_width,
         ),
-        Text("Turn Mix", style="bold"),
+        Text(f"Turn Mix ({snapshot.trend_minutes}m)", style="bold"),
         _turn_mix_line(snapshot, width=graph_width),
     )
 
@@ -393,11 +393,11 @@ def _compact_limit(used_percent: float | None, window_minutes: int | None) -> st
 
 def _format_turn_tokens(snapshot: MonitorSnapshot) -> str:
     parts = [
-        f"in {_format_compact_number(snapshot.last_input_tokens)}",
-        f"out {_format_compact_number(snapshot.last_output_tokens)}",
+        f"in {_format_compact_number(snapshot.recent_input_tokens)}",
+        f"out {_format_compact_number(snapshot.recent_output_tokens)}",
     ]
-    if snapshot.last_reasoning_tokens:
-        parts.append(f"r {_format_compact_number(snapshot.last_reasoning_tokens)}")
+    if snapshot.recent_reasoning_tokens:
+        parts.append(f"r {_format_compact_number(snapshot.recent_reasoning_tokens)}")
     return ", ".join(parts)
 
 
@@ -476,9 +476,9 @@ def _turn_mix_line(
     label: str = "mix",
     label_width: int = 9,
 ) -> Text:
-    input_tokens = snapshot.last_input_tokens or 0
-    output_tokens = snapshot.last_output_tokens or 0
-    reasoning_tokens = snapshot.last_reasoning_tokens or 0
+    input_tokens = snapshot.recent_input_tokens or 0
+    output_tokens = snapshot.recent_output_tokens or 0
+    reasoning_tokens = snapshot.recent_reasoning_tokens or 0
     total = input_tokens + output_tokens + reasoning_tokens
 
     text = Text()

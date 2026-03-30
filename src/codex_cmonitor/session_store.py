@@ -27,6 +27,7 @@ class SessionSummary:
     created_at: int
     updated_at: int
     thread_tokens_used: int
+    baseline_total_tokens: int
     token_count: TokenCountRecord | None
     recent_token_counts: list[TokenCountRecord]
 
@@ -47,6 +48,7 @@ def get_session_summary(
     trend_minutes: int = 15,
     now_ts: int | None = None,
 ) -> SessionSummary | None:
+    cutoff_ts = None if now_ts is None else now_ts - max(0, trend_minutes * 60)
     threads = fetch_threads(codex_home)
     thread = threads[0] if threads else None
     if thread is None:
@@ -58,7 +60,12 @@ def get_session_summary(
         minutes=trend_minutes,
         now_ts=now_ts,
     )
-    return _to_session_summary(thread, token_count, recent_token_counts)
+    return _to_session_summary(
+        thread,
+        token_count,
+        recent_token_counts,
+        cutoff_ts=cutoff_ts,
+    )
 
 
 def get_aggregate_session(
@@ -67,6 +74,7 @@ def get_aggregate_session(
     trend_minutes: int = 15,
     now_ts: int | None = None,
 ) -> AggregateSessionSummary | None:
+    cutoff_ts = None if now_ts is None else now_ts - max(0, trend_minutes * 60)
     threads = fetch_threads(codex_home)
     if not threads:
         return None
@@ -80,7 +88,12 @@ def get_aggregate_session(
             now_ts=now_ts,
         )
         session_summaries.append(
-            _to_session_summary(thread, token_count, recent_token_counts)
+            _to_session_summary(
+                thread,
+                token_count,
+                recent_token_counts,
+                cutoff_ts=cutoff_ts,
+            )
         )
 
     latest_session = session_summaries[0]
@@ -107,7 +120,20 @@ def _to_session_summary(
     thread: ThreadRecord,
     token_count: TokenCountRecord | None,
     recent_token_counts: list[TokenCountRecord],
+    *,
+    cutoff_ts: int | None,
 ) -> SessionSummary:
+    baseline_total_tokens = 0
+    filtered_recent_token_counts = recent_token_counts
+    if cutoff_ts is not None and recent_token_counts:
+        first_record = recent_token_counts[0]
+        if (
+            first_record.timestamp_unix is not None
+            and first_record.timestamp_unix < cutoff_ts
+        ):
+            baseline_total_tokens = first_record.total_tokens or 0
+            filtered_recent_token_counts = recent_token_counts[1:]
+
     return SessionSummary(
         session_id=thread.session_id,
         rollout_path=thread.rollout_path,
@@ -122,8 +148,9 @@ def _to_session_summary(
         created_at=thread.created_at,
         updated_at=thread.updated_at,
         thread_tokens_used=thread.tokens_used,
+        baseline_total_tokens=baseline_total_tokens,
         token_count=token_count,
-        recent_token_counts=recent_token_counts,
+        recent_token_counts=filtered_recent_token_counts,
     )
 
 
@@ -154,7 +181,7 @@ def _aggregate_recent_token_counts(
     if not events:
         return []
 
-    latest_totals = [0 for _ in sessions]
+    latest_totals = [session.baseline_total_tokens for session in sessions]
     aggregated: list[TokenCountRecord] = []
     for timestamp_unix, session_index, record in events:
         latest_totals[session_index] = record.total_tokens or 0

@@ -18,6 +18,7 @@ It currently shows:
 - branch, timestamps, and approval mode
 - aggregate account token totals across active sessions
 - aggregate recent trend across active sessions
+- aggregate input, output, and reasoning token usage across the selected recent window
 - latest rate-limit signals when available
 
 ## Install
@@ -49,6 +50,8 @@ Recent token trend is configurable with `--trend-minutes`. The default window is
 
 By default, `codex-cmonitor` aggregates usage across all active Codex sessions. This is deliberate: Codex limits are account-wide, so a single-session view can under-report the real risk of hitting a limit when multiple sessions are running at once.
 
+The recent-window token rows are also aggregate values. For example, `Input (15m)` and `Output (15m)` are summed across all active sessions within the current trend window, rather than taken from only the latest session event.
+
 ## Development
 
 Run directly from the source tree:
@@ -66,5 +69,6 @@ python3 -m pytest -q
 This is an early standalone implementation. It currently uses:
 
 - aggregate totals and recent trend across all active sessions
+- aggregate bounded-window input/output/reasoning usage across all active sessions
 - the latest available `token_count` event as the source of displayed limit percentages
 - the most recently updated session as the metadata anchor for title, cwd, and related context

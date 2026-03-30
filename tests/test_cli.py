@@ -107,9 +107,9 @@ def test_build_snapshot_reads_sqlite_and_rollout_jsonl(tmp_path: Path) -> None:
     assert snapshot.git_branch == "feat/test"
     assert snapshot.thread_tokens_used == 4321
     assert snapshot.last_total_tokens == 1234
-    assert snapshot.last_input_tokens == 100
-    assert snapshot.last_output_tokens == 20
-    assert snapshot.last_reasoning_tokens == 5
+    assert snapshot.recent_input_tokens == 110
+    assert snapshot.recent_output_tokens == 22
+    assert snapshot.recent_reasoning_tokens == 6
     assert snapshot.primary_used_percent == 4.0
     assert snapshot.secondary_used_percent == 3.0
     assert snapshot.plan_type == "plus"
@@ -177,11 +177,77 @@ def test_build_snapshot_aggregates_multiple_sessions(tmp_path: Path) -> None:
     assert snapshot.last_total_tokens == 4000
     assert snapshot.primary_used_percent == 5.0
     assert snapshot.secondary_used_percent == 4.0
-    assert snapshot.last_input_tokens == 40
-    assert snapshot.last_output_tokens == 5
-    assert snapshot.last_reasoning_tokens == 3
+    assert snapshot.recent_input_tokens == 100
+    assert snapshot.recent_output_tokens == 14
+    assert snapshot.recent_reasoning_tokens == 7
     assert snapshot.trend_points == [1000, 3000, 3400, 4000]
     assert snapshot.trend_delta_tokens == 3000
+
+
+def test_build_snapshot_seeds_trend_with_pre_cutoff_baseline(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    now = datetime.now(tz=timezone.utc)
+    pre_cutoff = (now - timedelta(minutes=20)).isoformat().replace("+00:00", "Z")
+    in_window = (now - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+
+    rollout_path_1 = codex_home / "sessions" / "2026" / "03" / "30" / "rollout-baseline-1.jsonl"
+    rollout_path_1.parent.mkdir(parents=True)
+    rollout_path_1.write_text(
+        _token_event(
+            pre_cutoff,
+            total_tokens=5000,
+            input_tokens=50,
+            output_tokens=5,
+            reasoning_tokens=2,
+            primary_used_percent=2.0,
+            secondary_used_percent=1.0,
+        ),
+        encoding="utf-8",
+    )
+
+    rollout_path_2 = codex_home / "sessions" / "2026" / "03" / "30" / "rollout-baseline-2.jsonl"
+    rollout_path_2.write_text(
+        "\n".join(
+            [
+                _token_event(
+                    pre_cutoff,
+                    total_tokens=3000,
+                    input_tokens=30,
+                    output_tokens=3,
+                    reasoning_tokens=1,
+                    primary_used_percent=2.0,
+                    secondary_used_percent=1.0,
+                ),
+                _token_event(
+                    in_window,
+                    total_tokens=3600,
+                    input_tokens=60,
+                    output_tokens=6,
+                    reasoning_tokens=2,
+                    primary_used_percent=3.0,
+                    secondary_used_percent=2.0,
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    db_path = codex_home / "state_5.sqlite"
+    _create_threads_table(db_path)
+    _insert_thread_row(db_path, rollout_path_2, session_id="session-2", tokens_used=3600)
+    _insert_thread_row(db_path, rollout_path_1, session_id="session-1", tokens_used=5000, updated_at=1774859000)
+
+    snapshot = build_snapshot(codex_home, trend_minutes=15)
+
+    assert snapshot.active_session_count == 2
+    assert snapshot.thread_tokens_used == 8600
+    assert snapshot.last_total_tokens == 8600
+    assert snapshot.trend_points == [8600]
+    assert snapshot.trend_delta_tokens is None
+    assert snapshot.recent_input_tokens == 60
+    assert snapshot.recent_output_tokens == 6
+    assert snapshot.recent_reasoning_tokens == 2
 
 
 def test_render_snapshot_text_contains_live_fields(tmp_path: Path) -> None:

@@ -202,6 +202,7 @@ def fetch_recent_token_counts(
     cutoff_ts = now_ts - max(0, minutes * 60)
 
     records: list[TokenCountRecord] = []
+    latest_before_cutoff: TokenCountRecord | None = None
     with path.open("r", encoding="utf-8") as handle:
         for raw_line in handle:
             raw_line = raw_line.strip()
@@ -215,8 +216,14 @@ def fetch_recent_token_counts(
             record = _parse_token_count_event(event)
             if record is None or record.timestamp_unix is None:
                 continue
+            if record.timestamp_unix < cutoff_ts:
+                latest_before_cutoff = record
+                continue
             if record.timestamp_unix >= cutoff_ts:
                 records.append(record)
+
+    if latest_before_cutoff is not None:
+        return [latest_before_cutoff, *records]
     return records
 
 
