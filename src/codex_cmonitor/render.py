@@ -91,7 +91,7 @@ def render_snapshot(
                 [
                     ("Account total", _format_number(snapshot.thread_tokens_used)),
                     ("Latest aggregate", _format_number(snapshot.last_total_tokens)),
-                    ("Trend", _format_trend_summary(snapshot)),
+                    ("Burn rate", _format_trend_summary(snapshot)),
                     (f"Input ({snapshot.trend_minutes}m)", _format_number(snapshot.recent_input_tokens)),
                     (f"Output ({snapshot.trend_minutes}m)", _format_number(snapshot.recent_output_tokens)),
                     (f"Reasoning ({snapshot.trend_minutes}m)", _format_number(snapshot.recent_reasoning_tokens)),
@@ -305,13 +305,13 @@ def _compact_live_panel(snapshot: MonitorSnapshot, *, width: int | None = None) 
     usage_table.add_column(overflow="ellipsis")
     usage_table.add_row("acct", _format_compact_number(snapshot.thread_tokens_used))
     usage_table.add_row("agg", _format_compact_number(snapshot.last_total_tokens))
-    usage_table.add_row("trend", _format_trend_summary(snapshot))
+    usage_table.add_row("burn", _format_trend_summary(snapshot))
     usage_table.add_row("turn", _truncate(_format_turn_tokens(snapshot), left_width + 6))
 
     left = Group(meta_table, Text(""), usage_table)
 
     right = Group(
-        Text(f"Trend ({snapshot.trend_minutes}m)", style="bold"),
+        Text(f"Burn Rate ({snapshot.trend_minutes}m)", style="bold"),
         _trend_line(snapshot, graph_width=graph_width),
         Text(""),
         Text("Limits", style="bold"),
@@ -348,11 +348,11 @@ def _ultra_compact_live_panel(snapshot: MonitorSnapshot, *, width: int | None = 
     rows.add_row("model", _truncate(_join_nonempty(snapshot.model_provider, snapshot.model), content_width))
     rows.add_row("cwd", _truncate(snapshot.cwd or "-", content_width))
     rows.add_row("sessions", str(snapshot.active_session_count))
-    rows.add_row("trend", _format_trend_summary(snapshot))
+    rows.add_row("burn", _format_trend_summary(snapshot))
     rows.add_row("turn", _truncate(_format_turn_tokens(snapshot), content_width))
 
     visuals = Group(
-        _trend_line(snapshot, graph_width=graph_width, label="t"),
+        _trend_line(snapshot, graph_width=graph_width, label="b"),
         _meter_line(
             "p",
             snapshot.primary_used_percent,
@@ -414,8 +414,13 @@ def _format_trend_summary(snapshot: MonitorSnapshot) -> str:
         return f"{snapshot.trend_minutes}m: -"
     delta = snapshot.trend_delta_tokens
     delta_str = _format_signed_compact_number(delta)
-    samples = len(snapshot.trend_points)
-    return f"{snapshot.trend_minutes}m {delta_str} ({samples} pts)"
+    peak = max(snapshot.trend_points)
+    avg = sum(snapshot.trend_points) // len(snapshot.trend_points)
+    return (
+        f"{snapshot.trend_minutes}m {delta_str}"
+        f" | peak {_format_compact_number(peak)}"
+        f" avg {_format_compact_number(avg)}"
+    )
 
 
 def _format_compact_number(value: int | None) -> str:
@@ -446,7 +451,7 @@ def _meter_line(
     return text
 
 
-def _trend_line(snapshot: MonitorSnapshot, *, graph_width: int, label: str = "trend") -> Text:
+def _trend_line(snapshot: MonitorSnapshot, *, graph_width: int, label: str = "burn") -> Text:
     text = Text()
     label_width = max(2, len(label) + 2)
     text.append(f"{label:<{label_width}}", style="dim")
@@ -527,13 +532,12 @@ def _sparkline(values: list[int], *, width: int) -> str:
     if len(values) > width:
         values = _downsample(values, width)
     levels = "▁▂▃▄▅▆▇█"
-    minimum = min(values)
     maximum = max(values)
-    if minimum == maximum:
+    if maximum == 0:
         return levels[0] * len(values)
     chars = []
     for value in values:
-        ratio = (value - minimum) / (maximum - minimum)
+        ratio = value / maximum
         idx = int(round(ratio * (len(levels) - 1)))
         idx = max(0, min(idx, len(levels) - 1))
         chars.append(levels[idx])

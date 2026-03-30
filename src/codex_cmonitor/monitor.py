@@ -94,16 +94,17 @@ def build_snapshot(
         )
 
     token_count = session.token_count
-    trend_points = [
+    cumulative = [
         record.total_tokens
         for record in session.recent_token_counts
         if record.total_tokens is not None
     ]
+    trend_points = [b - a for a, b in zip(cumulative[:-1], cumulative[1:])]
     trend_start = session.recent_token_counts[0].timestamp_unix if session.recent_token_counts else None
     trend_end = session.recent_token_counts[-1].timestamp_unix if session.recent_token_counts else None
     trend_delta = None
-    if len(trend_points) >= 2:
-        trend_delta = trend_points[-1] - trend_points[0]
+    if len(cumulative) >= 2:
+        trend_delta = cumulative[-1] - cumulative[0]
     recent_input_tokens = sum(record.input_tokens or 0 for record in session.recent_token_counts)
     recent_output_tokens = sum(record.output_tokens or 0 for record in session.recent_token_counts)
     recent_reasoning_tokens = sum(record.reasoning_tokens or 0 for record in session.recent_token_counts)

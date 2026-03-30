@@ -113,7 +113,7 @@ def test_build_snapshot_reads_sqlite_and_rollout_jsonl(tmp_path: Path) -> None:
     assert snapshot.primary_used_percent == 4.0
     assert snapshot.secondary_used_percent == 3.0
     assert snapshot.plan_type == "plus"
-    assert snapshot.trend_points == [1000, 1234]
+    assert snapshot.trend_points == [234]  # burn rate: delta between consecutive samples
     assert snapshot.trend_delta_tokens == 234
 
 
@@ -180,7 +180,7 @@ def test_build_snapshot_aggregates_multiple_sessions(tmp_path: Path) -> None:
     assert snapshot.recent_input_tokens == 100
     assert snapshot.recent_output_tokens == 14
     assert snapshot.recent_reasoning_tokens == 7
-    assert snapshot.trend_points == [1000, 3000, 3400, 4000]
+    assert snapshot.trend_points == [2000, 400, 600]  # burn rate deltas between consecutive cumulative points
     assert snapshot.trend_delta_tokens == 3000
 
 
@@ -243,7 +243,7 @@ def test_build_snapshot_seeds_trend_with_pre_cutoff_baseline(tmp_path: Path) -> 
     assert snapshot.active_session_count == 2
     assert snapshot.thread_tokens_used == 8600
     assert snapshot.last_total_tokens == 8600
-    assert snapshot.trend_points == [8600]
+    assert snapshot.trend_points == []  # single cumulative point yields no deltas
     assert snapshot.trend_delta_tokens is None
     assert snapshot.recent_input_tokens == 60
     assert snapshot.recent_output_tokens == 6
