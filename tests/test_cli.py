@@ -13,6 +13,7 @@ def test_build_snapshot_returns_no_session_for_missing_codex_home(tmp_path: Path
     snapshot = build_snapshot(tmp_path / "missing-codex-home")
     assert snapshot.status == "no_session"
     assert snapshot.captured_at is not None
+    assert snapshot.active_session_count == 0
 
 
 def test_build_snapshot_reads_sqlite_and_rollout_jsonl(tmp_path: Path) -> None:
@@ -99,6 +100,7 @@ def test_build_snapshot_reads_sqlite_and_rollout_jsonl(tmp_path: Path) -> None:
     snapshot = build_snapshot(codex_home, trend_minutes=15)
 
     assert snapshot.status == "ok"
+    assert snapshot.active_session_count == 1
     assert snapshot.session_id == "session-1"
     assert snapshot.model == "gpt-5.4"
     assert snapshot.cwd == "/tmp/project"
@@ -113,6 +115,73 @@ def test_build_snapshot_reads_sqlite_and_rollout_jsonl(tmp_path: Path) -> None:
     assert snapshot.plan_type == "plus"
     assert snapshot.trend_points == [1000, 1234]
     assert snapshot.trend_delta_tokens == 234
+
+
+def test_build_snapshot_aggregates_multiple_sessions(tmp_path: Path) -> None:
+    codex_home = tmp_path / ".codex"
+    codex_home.mkdir()
+    now = datetime.now(tz=timezone.utc)
+    t1 = (now - timedelta(minutes=12)).isoformat().replace("+00:00", "Z")
+    t2 = (now - timedelta(minutes=8)).isoformat().replace("+00:00", "Z")
+    t3 = (now - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    t4 = (now - timedelta(minutes=2)).isoformat().replace("+00:00", "Z")
+
+    rollout_path_1 = codex_home / "sessions" / "2026" / "03" / "30" / "rollout-1.jsonl"
+    rollout_path_1.parent.mkdir(parents=True)
+    rollout_path_1.write_text(
+        "\n".join(
+            [
+                _token_event(t1, total_tokens=1000, input_tokens=10, output_tokens=2, reasoning_tokens=1, primary_used_percent=2.0, secondary_used_percent=1.0),
+                _token_event(t3, total_tokens=1400, input_tokens=30, output_tokens=4, reasoning_tokens=2, primary_used_percent=3.0, secondary_used_percent=2.0),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    rollout_path_2 = codex_home / "sessions" / "2026" / "03" / "30" / "rollout-2.jsonl"
+    rollout_path_2.write_text(
+        "\n".join(
+            [
+                _token_event(t2, total_tokens=2000, input_tokens=20, output_tokens=3, reasoning_tokens=1, primary_used_percent=4.0, secondary_used_percent=3.0),
+                _token_event(t4, total_tokens=2600, input_tokens=40, output_tokens=5, reasoning_tokens=3, primary_used_percent=5.0, secondary_used_percent=4.0),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    db_path = codex_home / "state_5.sqlite"
+    _create_threads_table(db_path)
+    _insert_thread_row(
+        db_path,
+        rollout_path_2,
+        session_id="session-2",
+        title="Latest Session",
+        tokens_used=2600,
+        updated_at=int((now - timedelta(minutes=1)).timestamp()),
+    )
+    _insert_thread_row(
+        db_path,
+        rollout_path_1,
+        session_id="session-1",
+        title="Earlier Session",
+        tokens_used=1400,
+        updated_at=int((now - timedelta(minutes=4)).timestamp()),
+    )
+
+    snapshot = build_snapshot(codex_home, trend_minutes=15)
+
+    assert snapshot.status == "ok"
+    assert snapshot.active_session_count == 2
+    assert snapshot.session_id == "session-2"
+    assert snapshot.thread_tokens_used == 4000
+    assert snapshot.last_total_tokens == 4000
+    assert snapshot.primary_used_percent == 5.0
+    assert snapshot.secondary_used_percent == 4.0
+    assert snapshot.last_input_tokens == 40
+    assert snapshot.last_output_tokens == 5
+    assert snapshot.last_reasoning_tokens == 3
+    assert snapshot.trend_points == [1000, 3000, 3400, 4000]
+    assert snapshot.trend_delta_tokens == 3000
 
 
 def test_render_snapshot_text_contains_live_fields(tmp_path: Path) -> None:
@@ -132,7 +201,8 @@ def test_render_snapshot_text_contains_live_fields(tmp_path: Path) -> None:
 
     assert "codex-cmonitor" in output
     assert "Render Test" in output
-    assert "Thread tokens" in output
+    assert "Account total" in output
+    assert "Active sessions" in output
     assert "4,321" in output
 
 
@@ -238,7 +308,15 @@ def _create_threads_table(db_path: Path) -> None:
         connection.close()
 
 
-def _insert_thread_row(db_path: Path, rollout_path: Path, *, title: str = "Test Session") -> None:
+def _insert_thread_row(
+    db_path: Path,
+    rollout_path: Path,
+    *,
+    session_id: str = "session-1",
+    title: str = "Test Session",
+    tokens_used: int = 4321,
+    updated_at: int = 1774860137,
+) -> None:
     connection = sqlite3.connect(db_path)
     try:
         connection.execute(
@@ -266,17 +344,17 @@ def _insert_thread_row(db_path: Path, rollout_path: Path, *, title: str = "Test 
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                "session-1",
+                session_id,
                 str(rollout_path),
                 1774857171,
-                1774860137,
+                updated_at,
                 "cli",
                 "openai",
                 "/tmp/project",
                 title,
                 '{"type":"workspace-write"}',
                 "on-request",
-                4321,
+                tokens_used,
                 1,
                 0,
                 "feat/test",
@@ -290,3 +368,45 @@ def _insert_thread_row(db_path: Path, rollout_path: Path, *, title: str = "Test 
         connection.commit()
     finally:
         connection.close()
+
+
+def _token_event(
+    timestamp: str,
+    *,
+    total_tokens: int,
+    input_tokens: int,
+    output_tokens: int,
+    reasoning_tokens: int,
+    primary_used_percent: float,
+    secondary_used_percent: float,
+) -> str:
+    return json.dumps(
+        {
+            "timestamp": timestamp,
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "total_token_usage": {"total_tokens": total_tokens},
+                    "last_token_usage": {
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "reasoning_output_tokens": reasoning_tokens,
+                    },
+                },
+                "rate_limits": {
+                    "primary": {
+                        "used_percent": primary_used_percent,
+                        "window_minutes": 300,
+                        "resets_at": 1774863600,
+                    },
+                    "secondary": {
+                        "used_percent": secondary_used_percent,
+                        "window_minutes": 10080,
+                        "resets_at": 1775229821,
+                    },
+                    "plan_type": "plus",
+                },
+            },
+        }
+    )

@@ -66,8 +66,9 @@ def render_snapshot(
             _section(
                 "Session",
                 [
+                    ("Active sessions", str(snapshot.active_session_count)),
                     ("Title", snapshot.title),
-                    ("Session", snapshot.session_id),
+                    ("Latest session", snapshot.session_id),
                     ("Model", _join_nonempty(snapshot.model_provider, snapshot.model)),
                     ("Reasoning", snapshot.reasoning_effort or "-"),
                     ("Approval", snapshot.approval_mode or "-"),
@@ -88,8 +89,8 @@ def render_snapshot(
             _section(
                 "Usage",
                 [
-                    ("Thread tokens", _format_number(snapshot.thread_tokens_used)),
-                    ("Latest total", _format_number(snapshot.last_total_tokens)),
+                    ("Account total", _format_number(snapshot.thread_tokens_used)),
+                    ("Latest aggregate", _format_number(snapshot.last_total_tokens)),
                     ("Trend", _format_trend_summary(snapshot)),
                     ("Last input", _format_number(snapshot.last_input_tokens)),
                     ("Last output", _format_number(snapshot.last_output_tokens)),
@@ -130,8 +131,9 @@ def render_snapshot_live(snapshot: MonitorSnapshot, *, width: int | None = None)
 
     session_table = _build_live_table(
         [
+            ("Active sessions", str(snapshot.active_session_count)),
             ("Title", snapshot.title),
-            ("Session", snapshot.session_id),
+            ("Latest session", snapshot.session_id),
             ("Model", _join_nonempty(snapshot.model_provider, snapshot.model)),
             ("Reasoning", snapshot.reasoning_effort or "-"),
             ("Approval", snapshot.approval_mode or "-"),
@@ -148,8 +150,8 @@ def render_snapshot_live(snapshot: MonitorSnapshot, *, width: int | None = None)
     )
     usage_table = _build_live_table(
         [
-            ("Thread tokens", _format_number(snapshot.thread_tokens_used)),
-            ("Latest total", _format_number(snapshot.last_total_tokens)),
+            ("Account total", _format_number(snapshot.thread_tokens_used)),
+            ("Latest aggregate", _format_number(snapshot.last_total_tokens)),
             ("Trend", _format_trend_summary(snapshot)),
             ("Last input", _format_number(snapshot.last_input_tokens)),
             ("Last output", _format_number(snapshot.last_output_tokens)),
@@ -292,6 +294,7 @@ def _compact_live_panel(snapshot: MonitorSnapshot, *, width: int | None = None) 
     meta_table.add_column(overflow="ellipsis")
     meta_table.add_row("model", _truncate(_join_nonempty(snapshot.model_provider, snapshot.model), left_width + 6))
     meta_table.add_row("cwd", _truncate(snapshot.cwd or "-", left_width + 6))
+    meta_table.add_row("sessions", str(snapshot.active_session_count))
     meta_table.add_row("age", _format_age(snapshot.captured_at, snapshot.updated_at))
     meta_table.add_row("plan", snapshot.plan_type or "-")
     if snapshot.git_branch:
@@ -300,8 +303,8 @@ def _compact_live_panel(snapshot: MonitorSnapshot, *, width: int | None = None) 
     usage_table = Table.grid(expand=True)
     usage_table.add_column(style="dim", width=6, no_wrap=True)
     usage_table.add_column(overflow="ellipsis")
-    usage_table.add_row("thread", _format_compact_number(snapshot.thread_tokens_used))
-    usage_table.add_row("last", _format_compact_number(snapshot.last_total_tokens))
+    usage_table.add_row("acct", _format_compact_number(snapshot.thread_tokens_used))
+    usage_table.add_row("agg", _format_compact_number(snapshot.last_total_tokens))
     usage_table.add_row("trend", _format_trend_summary(snapshot))
     usage_table.add_row("turn", _truncate(_format_turn_tokens(snapshot), left_width + 6))
 
@@ -344,6 +347,7 @@ def _ultra_compact_live_panel(snapshot: MonitorSnapshot, *, width: int | None = 
     rows.add_column(overflow="ellipsis")
     rows.add_row("model", _truncate(_join_nonempty(snapshot.model_provider, snapshot.model), content_width))
     rows.add_row("cwd", _truncate(snapshot.cwd or "-", content_width))
+    rows.add_row("sessions", str(snapshot.active_session_count))
     rows.add_row("trend", _format_trend_summary(snapshot))
     rows.add_row("turn", _truncate(_format_turn_tokens(snapshot), content_width))
 

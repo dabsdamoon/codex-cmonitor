@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 import time
 
-from codex_cmonitor.session_store import get_active_session
+from codex_cmonitor.session_store import get_aggregate_session
 
 
 @dataclass
@@ -12,6 +12,7 @@ class MonitorSnapshot:
     status: str
     captured_at: int
     trend_minutes: int
+    active_session_count: int
     session_id: str | None
     rollout_path: str | None
     title: str | None
@@ -51,7 +52,7 @@ def build_snapshot(
     trend_minutes: int = 15,
 ) -> MonitorSnapshot:
     captured_at = int(time.time())
-    session = get_active_session(
+    session = get_aggregate_session(
         codex_home,
         trend_minutes=trend_minutes,
         now_ts=captured_at,
@@ -61,6 +62,7 @@ def build_snapshot(
             status="no_session",
             captured_at=captured_at,
             trend_minutes=trend_minutes,
+            active_session_count=0,
             session_id=None,
             rollout_path=None,
             title=None,
@@ -106,20 +108,21 @@ def build_snapshot(
         status="ok",
         captured_at=captured_at,
         trend_minutes=trend_minutes,
-        session_id=session.session_id,
-        rollout_path=str(session.rollout_path),
-        title=session.title,
-        model_provider=session.model_provider,
-        model=session.model,
-        reasoning_effort=session.reasoning_effort,
-        cwd=session.cwd,
-        git_branch=session.git_branch,
-        approval_mode=session.approval_mode,
-        created_at=session.created_at,
-        updated_at=session.updated_at,
-        thread_tokens_used=session.thread_tokens_used,
+        active_session_count=session.active_session_count,
+        session_id=session.latest_session.session_id,
+        rollout_path=str(session.latest_session.rollout_path),
+        title=session.latest_session.title,
+        model_provider=session.latest_session.model_provider,
+        model=session.latest_session.model,
+        reasoning_effort=session.latest_session.reasoning_effort,
+        cwd=session.latest_session.cwd,
+        git_branch=session.latest_session.git_branch,
+        approval_mode=session.latest_session.approval_mode,
+        created_at=session.latest_session.created_at,
+        updated_at=session.latest_session.updated_at,
+        thread_tokens_used=session.total_thread_tokens_used,
         last_event_timestamp=token_count.timestamp if token_count else None,
-        last_total_tokens=token_count.total_tokens if token_count else None,
+        last_total_tokens=session.latest_total_tokens,
         last_input_tokens=token_count.input_tokens if token_count else None,
         last_output_tokens=token_count.output_tokens if token_count else None,
         last_reasoning_tokens=token_count.reasoning_tokens if token_count else None,

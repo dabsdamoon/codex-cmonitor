@@ -110,6 +110,61 @@ def fetch_latest_thread(codex_home: str | Path | None = None) -> ThreadRecord | 
     )
 
 
+def fetch_threads(codex_home: str | Path | None = None) -> list[ThreadRecord]:
+    db_path = get_state_db_path(codex_home)
+    if not db_path.exists():
+        return []
+
+    query = """
+        SELECT
+            id,
+            rollout_path,
+            created_at,
+            updated_at,
+            cwd,
+            title,
+            model_provider,
+            COALESCE(model, '') AS model,
+            COALESCE(reasoning_effort, '') AS reasoning_effort,
+            approval_mode,
+            sandbox_policy,
+            COALESCE(git_branch, '') AS git_branch,
+            tokens_used
+        FROM threads
+        WHERE archived = 0
+          AND rollout_path != ''
+        ORDER BY updated_at DESC, created_at DESC
+    """
+
+    connection = sqlite3.connect(db_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(query).fetchall()
+    finally:
+        connection.close()
+
+    threads: list[ThreadRecord] = []
+    for row in rows:
+        threads.append(
+            ThreadRecord(
+                session_id=row["id"],
+                rollout_path=Path(row["rollout_path"]).expanduser(),
+                created_at=int(row["created_at"]),
+                updated_at=int(row["updated_at"]),
+                cwd=row["cwd"],
+                title=row["title"],
+                model_provider=row["model_provider"],
+                model=row["model"],
+                reasoning_effort=row["reasoning_effort"],
+                approval_mode=row["approval_mode"],
+                sandbox_policy=row["sandbox_policy"],
+                git_branch=row["git_branch"],
+                tokens_used=int(row["tokens_used"]),
+            )
+        )
+    return threads
+
+
 def fetch_latest_token_count(rollout_path: str | Path) -> TokenCountRecord | None:
     path = Path(rollout_path).expanduser()
     if not path.exists():
