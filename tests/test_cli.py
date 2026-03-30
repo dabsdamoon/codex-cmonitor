@@ -145,6 +145,12 @@ def test_build_parser_accepts_watch_flags() -> None:
     assert args.trend_minutes == 20
 
 
+def test_build_parser_defaults_include_trend_minutes() -> None:
+    parser = build_parser()
+    args = parser.parse_args([])
+    assert args.trend_minutes == 15
+
+
 def test_render_snapshot_live_supports_compact_width(tmp_path: Path) -> None:
     codex_home = tmp_path / ".codex"
     codex_home.mkdir()
