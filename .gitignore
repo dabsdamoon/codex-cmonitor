@@ -5,3 +5,6 @@ dist/
 build/
 *.egg-info/
 *.pyc
+
+# guidelines for internal use
+guidelines/*
